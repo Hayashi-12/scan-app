@@ -189,6 +189,7 @@ function saveSettings() {
 
 // ============================================================
 //  Supabase接続チェック
+//  sb_publishable_ 形式と eyJhbGci 形式の両方に対応
 // ============================================================
 async function checkConnection() {
   const url = document.getElementById("inUrl").value.trim().replace(/\/+$/, "");
@@ -203,10 +204,31 @@ async function checkConnection() {
 
   st.textContent = "接続確認中..."; st.className = "wait";
 
+  // sb_publishable_ 形式は /storage/v1/object/list/{bucket} で確認
+  // eyJhbGci 形式は /storage/v1/bucket/{bucket} で確認
+  const isNewKey = key.startsWith("sb_publishable_");
+
   try {
-    const res = await fetch(`${url}/storage/v1/bucket/${BUCKET}`, {
-      headers: { "apikey": key, "Authorization": `Bearer ${key}` }
-    });
+    let res;
+
+    if (isNewKey) {
+      // 新形式: ファイル一覧取得で接続確認
+      res = await fetch(`${url}/storage/v1/object/list/${BUCKET}`, {
+        method: "POST",
+        headers: {
+          "apikey": key,
+          "Authorization": `Bearer ${key}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ prefix: "", limit: 1 })
+      });
+    } else {
+      // 旧形式: バケット情報取得で接続確認
+      res = await fetch(`${url}/storage/v1/bucket/${BUCKET}`, {
+        headers: { "apikey": key, "Authorization": `Bearer ${key}` }
+      });
+    }
+
     if (res.ok) {
       st.textContent = "✓ 接続OK"; st.className = "ok";
       btn.disabled = false;
@@ -215,12 +237,12 @@ async function checkConnection() {
       const body = await res.text();
       st.textContent = `接続失敗 (${res.status})`; st.className = "ng";
       btn.disabled = true;
-      console.error("Bucket check failed:", res.status, body);
+      console.error("接続失敗:", res.status, body);
     }
   } catch(e) {
     st.textContent = "接続エラー（URLを確認）"; st.className = "ng";
     btn.disabled = true;
-    console.error("Connection error:", e);
+    console.error("接続エラー:", e);
   }
 }
 
