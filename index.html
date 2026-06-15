@@ -406,27 +406,59 @@ function updateUI(checks) {
 }
 
 // ============================================================
-//  撮影 → Supabaseにアップロード
+//  ガイド枠の領域を計算してクロップ
+// ============================================================
+function getCropRect(videoW, videoH) {
+  // ガイド枠: width:72%, aspect-ratio:1, 中心が上寄り(52%)
+  const ovalW  = videoW * 0.72;
+  const ovalH  = ovalW;
+  const centerX = videoW / 2;
+  const centerY = videoH * 0.48;
+  // マージン: 枠の10%
+  const margin = ovalW * 0.10;
+  const x = Math.max(0, Math.round(centerX - ovalW / 2 - margin));
+  const y = Math.max(0, Math.round(centerY - ovalH / 2 - margin));
+  const w = Math.min(videoW - x, Math.round(ovalW + margin * 2));
+  const h = Math.min(videoH - y, Math.round(ovalH + margin * 2));
+  return { x, y, w, h };
+}
+
+// ============================================================
+//  撮影 → クロップ → Supabaseにアップロード
 // ============================================================
 async function capture() {
   if (stableCount < STABLE_NEED) return;
 
-  // キャンバスに現在のフレームを描画
   const v = document.getElementById("video");
   const c = document.getElementById("canvas");
-  c.width  = v.videoWidth;
-  c.height = v.videoHeight;
+
+  // フル解像度でフレーム取得
+  const fullW = v.videoWidth;
+  const fullH = v.videoHeight;
+  c.width  = fullW;
+  c.height = fullH;
   c.getContext("2d").drawImage(v, 0, 0);
 
   // カメラ停止
   clearInterval(loopId);
   videoStream.getTracks().forEach(t => t.stop());
 
+  // ガイド枠でクロップ
+  const crop = getCropRect(fullW, fullH);
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width  = crop.w;
+  cropCanvas.height = crop.h;
+  cropCanvas.getContext("2d").drawImage(
+    c,
+    crop.x, crop.y, crop.w, crop.h,
+    0, 0, crop.w, crop.h
+  );
+
   // アップロード画面表示
   show("uploading");
 
-  // JPEGに変換
-  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.92));
+  // クロップ画像をJPEGに変換
+  const blob = await new Promise(r => cropCanvas.toBlob(r, "image/jpeg", 0.92));
 
   // ファイル名: S001_20260615_143022.jpg
   const now = new Date();
@@ -464,8 +496,12 @@ async function capture() {
       subject_id: subjectId,
       timestamp: now.toISOString(),
       filename: filename,
-      image_width: c.width,
-      image_height: c.height
+      image_width: crop.w,
+      image_height: crop.h,
+      crop_x: crop.x,
+      crop_y: crop.y,
+      original_width: fullW,
+      original_height: fullH
     };
 
     await fetch(
