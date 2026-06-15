@@ -17,7 +17,6 @@ import cv2
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from scan_validator import validate_or_abort, ScanStandard
 
 # =====================
 # 設定（環境変数があればそちらを優先）
@@ -141,13 +140,29 @@ def calc_burn_gradient(burn_mask, V_channel):
 def analyze(image_path, output_dir, subject_id="unknown"):
     """1枚の画像を解析して結果を返す"""
 
-    # バリデーション（strict=False で警告のみ、解析は続行）
-    std = ScanStandard(brightness_min=80, brightness_max=220)
+    # 画像読み込み
     try:
-        img = validate_or_abort(image_path, standard=std, strict=False)
+        img = cv2.imread(str(image_path))
+        if img is None:
+            raise FileNotFoundError()
     except FileNotFoundError:
         print(f"[エラー] 画像が見つかりません: {image_path}")
         return None
+
+    # ─── 0. PC側でセンタークロップ ───
+    # iPhoneの縦長画像から中央の正方形領域を切り出す
+    # これにより背景・足元・余計なものを除去
+    h_orig, w_orig = img.shape[:2]
+    if h_orig > w_orig:
+        # 縦長 → 中央から正方形にクロップ（上下にマージン付き）
+        side = w_orig
+        margin_ratio = 0.10  # 上下に10%マージン
+        crop_h = int(side * (1 + margin_ratio * 2))
+        crop_h = min(crop_h, h_orig)
+        y_start = max(0, (h_orig - crop_h) // 2 - int(h_orig * 0.05))  # 少し上寄り
+        y_end   = min(h_orig, y_start + crop_h)
+        img = img[y_start:y_end, 0:w_orig]
+    # 横長の場合はそのまま
 
     # ノイズ低減
     img = cv2.GaussianBlur(img, (7, 7), 0)
@@ -160,13 +175,21 @@ def analyze(image_path, output_dir, subject_id="unknown"):
     L = lab[:, :, 0]
 
     # ─── 1. 模擬臓器領域抽出 ───
-    # 模擬臓器の色相（赤橙系）に絞る
-    # OpenCVのHue: 赤=0-10 & 170-180、橙=10-25
-    # 木目(茶色)はHue=15-25でSが低め、臓器はSが高い
-    red_low    = ((H <= 10) & (S > 60) & (V > 40))
-    red_high   = ((H >= 170) & (S > 60) & (V > 40))
-    orange     = ((H > 10) & (H <= 30) & (S > 80) & (V > 50))
-    organ_candidate = (red_low | red_high | orange).astype(np.uint8) * 255
+    # 赤橙色（模擬臓器）に色相を絞り、木目・机を除外
+    # 画像中央60%の領域のみを臓器候補とすることで端の誤検出を防ぐ
+    h_img, w_img = gray.shape
+    center_mask = np.zeros_like(gray)
+    y1 = int(h_img * 0.10)
+    y2 = int(h_img * 0.90)
+    x1 = int(w_img * 0.05)
+    x2 = int(w_img * 0.95)
+    center_mask[y1:y2, x1:x2] = 255
+
+    red_low  = ((H <= 12) & (S > 70) & (V > 40))
+    red_high = ((H >= 168) & (S > 70) & (V > 40))
+    orange   = ((H > 12) & (H <= 28) & (S > 90) & (V > 60))
+    color_match = (red_low | red_high | orange).astype(np.uint8) * 255
+    organ_candidate = cv2.bitwise_and(color_match, center_mask)
 
     kernel_large = np.ones((15, 15), np.uint8)
     kernel_mid   = np.ones((7, 7), np.uint8)
