@@ -150,16 +150,14 @@ def analyze(image_path, output_dir, subject_id="unknown"):
         return None
 
     # ─── 0. PC側でセンタークロップ ───
-    # iPhoneの縦長画像から中央の正方形領域を切り出す
-    # これにより背景・足元・余計なものを除去
+    # iPhoneの縦長画像から臓器周辺だけを切り出す（マージン2%のみ）
     h_orig, w_orig = img.shape[:2]
     if h_orig > w_orig:
-        # 縦長 → 中央から正方形にクロップ（上下にマージン付き）
-        side = w_orig
-        margin_ratio = 0.10  # 上下に10%マージン
-        crop_h = int(side * (1 + margin_ratio * 2))
-        crop_h = min(crop_h, h_orig)
-        y_start = max(0, (h_orig - crop_h) // 2 - int(h_orig * 0.05))  # 少し上寄り
+        # 縦長 → 横幅をそのまま一辺として正方形にクロップ
+        crop_h  = int(w_orig * 1.04)   # 横幅の1.04倍 = 上下マージン2%ずつ
+        crop_h  = min(crop_h, h_orig)
+        # 上下均等に中央からクロップ
+        y_start = max(0, (h_orig - crop_h) // 2)
         y_end   = min(h_orig, y_start + crop_h)
         img = img[y_start:y_end, 0:w_orig]
     # 横長の場合はそのまま
@@ -205,13 +203,20 @@ def analyze(image_path, output_dir, subject_id="unknown"):
     organ_mask = np.zeros_like(gray)
     cv2.drawContours(organ_mask, [organ_contour], -1, 255, -1)
 
-    # ─── 2. 焦げ領域抽出 ───
+    # ─── 2. 臓器内側マスク生成 ───
+    # 臓器輪郭を20px収縮 → 影・机との境界を除外
+    # 焦げも残存腫瘍もこの内側マスク内にしか存在しない前提
+    erode_kernel = np.ones((20, 20), np.uint8)
+    organ_inner  = cv2.erode(organ_mask, erode_kernel, iterations=1)
+
+    # ─── 3. 焦げ領域抽出（organ_inner内のみ）───
     burn_candidate = (
-        (organ_mask > 0) & (V < DARK_V_MAX) & (L < DARK_L_MAX)
+        (organ_inner > 0) & (V < DARK_V_MAX) & (L < DARK_L_MAX)
     ).astype(np.uint8) * 255
 
+    # 白い残存腫瘍は焦げ候補から除外
     white_region = (
-        (gray > TUMOR_GRAY_MIN) & (S < TUMOR_S_MAX) & (organ_mask > 0)
+        (gray > TUMOR_GRAY_MIN) & (S < TUMOR_S_MAX) & (organ_inner > 0)
     ).astype(np.uint8) * 255
     burn_candidate[white_region > 0] = 0
 
@@ -222,14 +227,14 @@ def analyze(image_path, output_dir, subject_id="unknown"):
     burn_candidate = remove_small_components(burn_candidate, MIN_BURN_AREA)
     burn_mask = keep_largest_components(burn_candidate, top_n=1)
 
-    # ─── 3. 焦げ3段階分類 ───
+    # ─── 4. 焦げ3段階分類 ───
     mild_mask     = ((burn_mask > 0) & (V >= MODERATE_V_MAX) & (V < MILD_V_MAX)).astype(np.uint8) * 255
     moderate_mask = ((burn_mask > 0) & (V >= SEVERE_V_MAX) & (V < MODERATE_V_MAX)).astype(np.uint8) * 255
     severe_mask   = ((burn_mask > 0) & (V < SEVERE_V_MAX)).astype(np.uint8) * 255
 
-    # ─── 4. 残存腫瘍領域抽出 ───
+    # ─── 5. 残存腫瘍領域抽出（organ_inner内のみ）───
     tumor_candidate = (
-        (gray > TUMOR_GRAY_MIN) & (S < TUMOR_S_MAX) & (organ_mask > 0)
+        (gray > TUMOR_GRAY_MIN) & (S < TUMOR_S_MAX) & (organ_inner > 0)
     ).astype(np.uint8) * 255
     tumor_candidate = cv2.morphologyEx(tumor_candidate, cv2.MORPH_OPEN, kernel_small)
     tumor_candidate = cv2.morphologyEx(tumor_candidate, cv2.MORPH_CLOSE, kernel_mid)
