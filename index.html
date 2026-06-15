@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>撮影ガイド</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,sans-serif;background:#0a0a0a;color:#fff;min-height:100dvh;overflow:hidden}
+button{font-family:inherit}
+
+/* ===== セットアップ画面 ===== */
+#setup{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100dvh;padding:2rem;gap:1rem}
+#setup h1{font-size:22px;font-weight:700;letter-spacing:-0.3px}
+#setup .desc{font-size:14px;color:#aaa;text-align:center;line-height:1.6;max-width:340px}
+.field{width:100%;max-width:340px;display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;color:#777;text-transform:uppercase;letter-spacing:0.5px}
+.field input{width:100%;padding:12px 16px;border-radius:12px;border:1px solid #333;background:#1a1a1a;color:#fff;font-size:15px;outline:none;text-align:center}
+.field input:focus{border-color:#34c759}
+#connStatus{font-size:12px;padding:5px 14px;border-radius:20px;text-align:center}
+#connStatus.ok{background:#122e12;color:#34c759}
+#connStatus.ng{background:#2e1212;color:#ff6b6b}
+#connStatus.wait{background:#2e2a12;color:#f5a623}
+#startBtn{width:100%;max-width:340px;padding:15px;border-radius:14px;background:#34c759;color:#fff;font-size:16px;font-weight:600;border:none;cursor:pointer;transition:opacity 0.15s}
+#startBtn:active{opacity:0.7}
+#startBtn:disabled{background:#333;color:#666}
+
+/* ===== スキャナー画面 ===== */
+#scanner{display:none;position:fixed;inset:0;flex-direction:column}
+#viewfinder{position:relative;flex:1;overflow:hidden;background:#000}
+#video{width:100%;height:100%;object-fit:cover}
+#canvas{display:none}
+
+/* ガイド枠（楕円） */
+#guideOval{position:absolute;top:50%;left:50%;transform:translate(-50%,-52%);width:72%;aspect-ratio:1;border-radius:50%;border:2.5px solid #34c759;transition:border-color 0.3s;pointer-events:none}
+#guideOval.ng{border-color:#ff3b30}
+
+/* コーナーマーク */
+.co{position:absolute;width:22px;height:22px;pointer-events:none}
+.co.tl{top:-2px;left:-2px;border-top:3px solid;border-left:3px solid;border-color:inherit}
+.co.tr{top:-2px;right:-2px;border-top:3px solid;border-right:3px solid;border-color:inherit}
+.co.bl{bottom:-2px;left:-2px;border-bottom:3px solid;border-left:3px solid;border-color:inherit}
+.co.br{bottom:-2px;right:-2px;border-bottom:3px solid;border-right:3px solid;border-color:inherit}
+
+/* 十字線 */
+#crossH,#crossV{position:absolute;background:rgba(255,255,255,0.15);pointer-events:none}
+#crossH{width:40px;height:1px;top:50%;left:50%;transform:translate(-50%,-50%)}
+#crossV{width:1px;height:40px;top:50%;left:50%;transform:translate(-50%,-50%)}
+
+/* チェックリスト */
+#checks{position:absolute;top:max(env(safe-area-inset-top),10px);left:10px;right:10px;display:flex;flex-direction:column;gap:4px;z-index:2}
+.ck{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,0.6);border-radius:8px;padding:6px 10px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.ck-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ck-dot.ok{background:#34c759}
+.ck-dot.ng{background:#ff3b30}
+.ck-msg{font-size:13px;font-weight:500}
+
+/* 被験者ID表示 */
+#subjectBadge{position:absolute;top:max(env(safe-area-inset-top),10px);right:10px;background:rgba(0,0,0,0.6);border-radius:8px;padding:5px 10px;font-size:12px;color:#34c759;font-weight:600;z-index:2;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+
+/* 安定バー */
+#stabWrap{position:absolute;bottom:100px;left:16px;right:16px;z-index:2}
+#stabLabel{font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:5px;text-align:center}
+#stabTrack{height:5px;background:rgba(255,255,255,0.12);border-radius:3px;overflow:hidden}
+#stabFill{height:100%;width:0%;background:#34c759;border-radius:3px;transition:width 0.15s}
+
+/* 撮影ボタン */
+#captureBtn{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);width:70px;height:70px;border-radius:50%;background:rgba(255,255,255,0.95);border:4px solid rgba(255,255,255,0.3);cursor:pointer;z-index:3;transition:transform 0.1s,background 0.2s;display:flex;align-items:center;justify-content:center}
+#captureBtn:active{transform:translateX(-50%) scale(0.9)}
+#captureBtn.off{background:rgba(80,80,80,0.6);border-color:rgba(80,80,80,0.3);pointer-events:none}
+#captureInner{width:54px;height:54px;border-radius:50%;background:#fff;transition:background 0.2s}
+#captureBtn.off #captureInner{background:#444}
+
+/* ===== アップロード画面 ===== */
+#uploading{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:20;flex-direction:column;align-items:center;justify-content:center;gap:1rem}
+.spinner{width:38px;height:38px;border:3px solid #333;border-top-color:#34c759;border-radius:50%;animation:spin 0.7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== 結果画面 ===== */
+#result{display:none;flex-direction:column;min-height:100dvh;padding:1.5rem;padding-top:max(env(safe-area-inset-top),1.5rem);gap:1rem;overflow-y:auto;padding-bottom:calc(env(safe-area-inset-bottom) + 1.5rem)}
+#result h2{font-size:18px;font-weight:600}
+.ok-box{background:#122c12;border:1px solid #1e5c1e;border-radius:14px;padding:20px;font-size:15px;line-height:1.8;color:#80ff80;text-align:center}
+.ok-box strong{font-size:14px;color:#bbb;display:block;margin-top:6px;word-break:break-all}
+.err-box{background:#2c1212;border:1px solid #5c2020;border-radius:14px;padding:16px;font-size:14px;line-height:1.7;color:#ff8080}
+.shot-count{text-align:center;font-size:13px;color:#888;margin-top:-4px}
+#retakeBtn{width:100%;padding:15px;border-radius:14px;background:#1c1c1e;color:#fff;font-size:16px;font-weight:500;border:1px solid #333;cursor:pointer;flex-shrink:0}
+#retakeBtn:active{opacity:0.7}
+</style>
+</head>
+<body>
+
+<!-- ========== セットアップ ========== -->
+<div id="setup">
+  <h1>撮影ガイド</h1>
+  <p class="desc">
+    模擬臓器をガイド枠に合わせて撮影すると、<br>
+    自動的にPCに転送されます。
+  </p>
+
+  <div class="field">
+    <label>Supabase URL</label>
+    <input id="inUrl" type="url" placeholder="https://xxxxx.supabase.co" autocomplete="off">
+  </div>
+  <div class="field">
+    <label>Publishable Key</label>
+    <input id="inKey" type="text" placeholder="sb_publishable_..." autocomplete="off">
+  </div>
+  <div class="field">
+    <label>被験者ID</label>
+    <input id="inSubject" type="text" placeholder="例: S001" value="S001" autocomplete="off">
+  </div>
+
+  <div id="connStatus" class="ng">未接続</div>
+  <button id="startBtn" onclick="start()" disabled>カメラを起動</button>
+</div>
+
+<!-- ========== スキャナー ========== -->
+<div id="scanner">
+  <div id="viewfinder">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="guideOval" class="ng">
+      <div class="co tl"></div><div class="co tr"></div>
+      <div class="co bl"></div><div class="co br"></div>
+    </div>
+    <div id="crossH"></div>
+    <div id="crossV"></div>
+
+    <div id="checks"></div>
+    <div id="subjectBadge">S001</div>
+
+    <div id="stabWrap">
+      <div id="stabLabel">条件を整えてください</div>
+      <div id="stabTrack"><div id="stabFill"></div></div>
+    </div>
+
+    <button id="captureBtn" class="off" onclick="capture()">
+      <div id="captureInner"></div>
+    </button>
+  </div>
+</div>
+
+<!-- ========== アップロード中 ========== -->
+<div id="uploading">
+  <div class="spinner"></div>
+  <div style="font-size:15px">アップロード中...</div>
+</div>
+
+<!-- ========== 結果 ========== -->
+<div id="result">
+  <h2 id="resultTitle">撮影完了</h2>
+  <div id="resultContent"></div>
+  <div id="shotCount" class="shot-count"></div>
+  <button id="retakeBtn" onclick="retake()">次の被験者を撮影</button>
+</div>
+
+<script>
+// ============================================================
+//  グローバル変数
+// ============================================================
+let SUPA_URL = "", SUPA_KEY = "", BUCKET = "scans";
+let subjectId = "", videoStream = null, loopId = null;
+let stableCount = 0, shotNumber = 0;
+const STABLE_NEED = 18; // 約3.6秒（200ms × 18）
+
+// ============================================================
+//  設定の永続化（2回目以降の入力を省略）
+// ============================================================
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem("scan_cfg") || "{}");
+    if (s.url) document.getElementById("inUrl").value = s.url;
+    if (s.key) document.getElementById("inKey").value = s.key;
+    if (s.subject) document.getElementById("inSubject").value = s.subject;
+    checkConnection();
+  } catch(e) {}
+}
+
+function saveSettings() {
+  localStorage.setItem("scan_cfg", JSON.stringify({
+    url: document.getElementById("inUrl").value.trim(),
+    key: document.getElementById("inKey").value.trim(),
+    subject: document.getElementById("inSubject").value.trim()
+  }));
+}
+
+// ============================================================
+//  Supabase接続チェック
+// ============================================================
+async function checkConnection() {
+  const url = document.getElementById("inUrl").value.trim().replace(/\/+$/, "");
+  const key = document.getElementById("inKey").value.trim();
+  const st  = document.getElementById("connStatus");
+  const btn = document.getElementById("startBtn");
+
+  if (!url || !key) {
+    st.textContent = "URLとKeyを入力してください";
+    st.className = "ng"; btn.disabled = true; return;
+  }
+
+  st.textContent = "接続確認中..."; st.className = "wait";
+
+  try {
+    const res = await fetch(`${url}/storage/v1/bucket/${BUCKET}`, {
+      headers: { "apikey": key, "Authorization": `Bearer ${key}` }
+    });
+    if (res.ok) {
+      st.textContent = "✓ 接続OK"; st.className = "ok";
+      btn.disabled = false;
+      SUPA_URL = url; SUPA_KEY = key;
+    } else {
+      const body = await res.text();
+      st.textContent = `接続失敗 (${res.status})`; st.className = "ng";
+      btn.disabled = true;
+      console.error("Bucket check failed:", res.status, body);
+    }
+  } catch(e) {
+    st.textContent = "接続エラー（URLを確認）"; st.className = "ng";
+    btn.disabled = true;
+    console.error("Connection error:", e);
+  }
+}
+
+// 入力欄の変更を監視
+document.getElementById("inUrl").addEventListener("change", checkConnection);
+document.getElementById("inKey").addEventListener("change", checkConnection);
+
+// ============================================================
+//  カメラ起動
+// ============================================================
+async function start() {
+  subjectId = document.getElementById("inSubject").value.trim() || "S001";
+  saveSettings();
+
+  try {
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment",
+        width:  { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    });
+    document.getElementById("video").srcObject = videoStream;
+    document.getElementById("subjectBadge").textContent = subjectId;
+    show("scanner");
+    stableCount = 0;
+    loopId = setInterval(analyzeFrame, 200);
+  } catch(e) {
+    alert(
+      "カメラへのアクセスが許可されていません。\n\n" +
+      "【iPhone Safari の場合】\n" +
+      "設定 → Safari → カメラ → 許可\n\n" +
+      "【Chrome の場合】\n" +
+      "アドレスバー左の鍵アイコン → カメラ → 許可"
+    );
+  }
+}
+
+// ============================================================
+//  フレーム解析（クライアント側の簡易チェック）
+// ============================================================
+function analyzeFrame() {
+  const v = document.getElementById("video");
+  if (v.readyState < 2) return;
+
+  const c = document.getElementById("canvas");
+  c.width  = v.videoWidth  || 640;
+  c.height = v.videoHeight || 480;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(v, 0, 0);
+
+  const fd = ctx.getImageData(0, 0, c.width, c.height);
+  const checks = quickCheck(fd, c.width, c.height);
+  updateUI(checks);
+}
+
+function quickCheck(imageData, w, h) {
+  const d = imageData.data;
+  const step = 4; // サンプリング間隔（速度のため全ピクセルは見ない）
+  let brightSum = 0, samples = 0;
+  let colorPx = 0, colorXsum = 0, colorYsum = 0;
+
+  for (let y = 0; y < h; y += step) {
+    for (let x = 0; x < w; x += step) {
+      const i = (y * w + x) * 4;
+      const r = d[i], g = d[i+1], b = d[i+2];
+
+      // 明度
+      brightSum += 0.299 * r + 0.587 * g + 0.114 * b;
+      samples++;
+
+      // 彩度（色がある＝臓器候補）
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+      const sat = mx === 0 ? 0 : (mx - mn) / mx;
+      if (sat > 0.25 && mx > 40) {
+        colorPx++;
+        colorXsum += x;
+        colorYsum += y;
+      }
+    }
+  }
+
+  const brightness = brightSum / samples;
+  const colorRatio = colorPx / samples;
+  const checks = {};
+
+  // ── 明るさ ──
+  if (brightness < 90) {
+    checks["明るさ"] = { ok: false, msg: "暗すぎます — 照明を明るくしてください" };
+  } else if (brightness > 210) {
+    checks["明るさ"] = { ok: false, msg: "明るすぎます — 照明を弱めてください" };
+  } else {
+    checks["明るさ"] = { ok: true, msg: `明るさOK (${Math.round(brightness)})` };
+  }
+
+  // ── 臓器サイズ（色領域の面積比） ──
+  if (colorRatio < 0.08) {
+    checks["サイズ"] = { ok: false, msg: "臓器が見えません" };
+  } else if (colorRatio < 0.18) {
+    checks["サイズ"] = { ok: false, msg: "もっと近づけてください" };
+  } else if (colorRatio > 0.70) {
+    checks["サイズ"] = { ok: false, msg: "少し離してください" };
+  } else {
+    checks["サイズ"] = { ok: true, msg: `サイズOK (${Math.round(colorRatio * 100)}%)` };
+  }
+
+  // ── 中心位置 ──
+  if (colorPx > 10) {
+    const avgX = colorXsum / colorPx;
+    const avgY = colorYsum / colorPx;
+    const offX = Math.abs(avgX - w / 2) / w;
+    const offY = Math.abs(avgY - h / 2) / h;
+    const off = Math.max(offX, offY);
+
+    if (off > 0.20) {
+      const dir = offX > offY
+        ? (avgX < w / 2 ? "右へ移動" : "左へ移動")
+        : (avgY < h / 2 ? "下へ移動" : "上へ移動");
+      checks["位置"] = { ok: false, msg: `中央からずれています → ${dir}` };
+    } else {
+      checks["位置"] = { ok: true, msg: "位置OK" };
+    }
+  }
+
+  return checks;
+}
+
+function updateUI(checks) {
+  const allOk = Object.values(checks).every(c => c.ok);
+
+  // ガイド枠の色
+  document.getElementById("guideOval").className = allOk ? "" : "ng";
+
+  // チェックリスト更新
+  document.getElementById("checks").innerHTML =
+    Object.values(checks).map(c =>
+      `<div class="ck">` +
+        `<div class="ck-dot ${c.ok ? 'ok' : 'ng'}"></div>` +
+        `<span class="ck-msg">${c.msg}</span>` +
+      `</div>`
+    ).join("");
+
+  // 安定カウント
+  if (allOk) {
+    stableCount = Math.min(stableCount + 1, STABLE_NEED);
+  } else {
+    stableCount = Math.max(stableCount - 2, 0);
+  }
+
+  const ratio = stableCount / STABLE_NEED;
+  document.getElementById("stabFill").style.width = (ratio * 100) + "%";
+
+  // 撮影ボタンの有効化
+  const ready = stableCount >= STABLE_NEED;
+  document.getElementById("captureBtn").className = ready ? "" : "off";
+  document.getElementById("stabLabel").textContent =
+    ready ? "✓ 準備完了 — ボタンを押して撮影" :
+    allOk ? "そのままキープしてください..." :
+            "上記の項目を修正してください";
+}
+
+// ============================================================
+//  撮影 → Supabaseにアップロード
+// ============================================================
+async function capture() {
+  if (stableCount < STABLE_NEED) return;
+
+  // キャンバスに現在のフレームを描画
+  const v = document.getElementById("video");
+  const c = document.getElementById("canvas");
+  c.width  = v.videoWidth;
+  c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+
+  // カメラ停止
+  clearInterval(loopId);
+  videoStream.getTracks().forEach(t => t.stop());
+
+  // アップロード画面表示
+  show("uploading");
+
+  // JPEGに変換
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.92));
+
+  // ファイル名: S001_20260615_143022.jpg
+  const now = new Date();
+  const ts = now.getFullYear().toString() +
+    String(now.getMonth()+1).padStart(2,"0") +
+    String(now.getDate()).padStart(2,"0") + "_" +
+    String(now.getHours()).padStart(2,"0") +
+    String(now.getMinutes()).padStart(2,"0") +
+    String(now.getSeconds()).padStart(2,"0");
+  const filename = `${subjectId}_${ts}.jpg`;
+
+  try {
+    // ── 画像をSupabase Storageにアップロード ──
+    const res = await fetch(
+      `${SUPA_URL}/storage/v1/object/${BUCKET}/${filename}`,
+      {
+        method: "POST",
+        headers: {
+          "apikey": SUPA_KEY,
+          "Authorization": `Bearer ${SUPA_KEY}`,
+          "Content-Type": "image/jpeg",
+          "x-upsert": "true"
+        },
+        body: blob
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`${res.status}: ${errText}`);
+    }
+
+    // ── メタ情報もJSON保存 ──
+    const meta = {
+      subject_id: subjectId,
+      timestamp: now.toISOString(),
+      filename: filename,
+      image_width: c.width,
+      image_height: c.height
+    };
+
+    await fetch(
+      `${SUPA_URL}/storage/v1/object/${BUCKET}/${subjectId}_${ts}_meta.json`,
+      {
+        method: "POST",
+        headers: {
+          "apikey": SUPA_KEY,
+          "Authorization": `Bearer ${SUPA_KEY}`,
+          "Content-Type": "application/json",
+          "x-upsert": "true"
+        },
+        body: JSON.stringify(meta)
+      }
+    );
+
+    // 成功
+    shotNumber++;
+    show("result");
+    document.getElementById("resultTitle").textContent = "撮影完了";
+    document.getElementById("resultContent").innerHTML =
+      `<div class="ok-box">` +
+        `✓ アップロード完了<strong>${filename}</strong><br><br>` +
+        `PC側で自動的にダウンロード・解析されます` +
+      `</div>`;
+    document.getElementById("shotCount").textContent =
+      `本日の撮影: ${shotNumber}枚`;
+
+    // 被験者IDを自動インクリメント（S001 → S002）
+    incrementSubjectId();
+
+  } catch(e) {
+    show("result");
+    document.getElementById("resultTitle").textContent = "エラー";
+    document.getElementById("resultContent").innerHTML =
+      `<div class="err-box">` +
+        `アップロードに失敗しました。<br><br>` +
+        `${e.message}<br><br>` +
+        `インターネット接続を確認してください。` +
+      `</div>`;
+  }
+}
+
+function incrementSubjectId() {
+  const match = subjectId.match(/^([A-Za-z]*)(\d+)$/);
+  if (match) {
+    const prefix = match[1];
+    const num = Number(match[2]) + 1;
+    const padded = String(num).padStart(match[2].length, "0");
+    subjectId = prefix + padded;
+    document.getElementById("inSubject").value = subjectId;
+    saveSettings();
+  }
+}
+
+// ============================================================
+//  画面切替
+// ============================================================
+function show(id) {
+  ["setup", "scanner", "uploading", "result"].forEach(s => {
+    document.getElementById(s).style.display = "none";
+  });
+  document.getElementById(id).style.display = "flex";
+}
+
+function retake() {
+  saveSettings();
+  stableCount = 0;
+  show("setup");
+  document.getElementById("subjectBadge").textContent = subjectId;
+  checkConnection();
+}
+
+// ============================================================
+//  初期化
+// ============================================================
+loadSettings();
+</script>
+</body>
+</html>

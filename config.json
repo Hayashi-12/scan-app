@@ -1,0 +1,8 @@
+{
+    "supabase_url": "https://vuxwmyudoymqcyplyjkl.supabase.co",
+    "supabase_anon_key": "sb_publishable_vreFxwLz67v5Qp4TvJycAA_J3FtjYzf",
+    "bucket_name": "scans",
+    "poll_interval_sec": 5,
+    "download_dir": "received_images",
+    "output_dir": "output"
+}
