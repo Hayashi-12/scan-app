@@ -160,7 +160,14 @@ def analyze(image_path, output_dir, subject_id="unknown"):
     L = lab[:, :, 0]
 
     # ─── 1. 模擬臓器領域抽出 ───
-    organ_candidate = ((S > 35) & (V > 25)).astype(np.uint8) * 255
+    # 模擬臓器の色相（赤橙系）に絞る
+    # OpenCVのHue: 赤=0-10 & 170-180、橙=10-25
+    # 木目(茶色)はHue=15-25でSが低め、臓器はSが高い
+    red_low    = ((H <= 10) & (S > 60) & (V > 40))
+    red_high   = ((H >= 170) & (S > 60) & (V > 40))
+    orange     = ((H > 10) & (H <= 30) & (S > 80) & (V > 50))
+    organ_candidate = (red_low | red_high | orange).astype(np.uint8) * 255
+
     kernel_large = np.ones((15, 15), np.uint8)
     kernel_mid   = np.ones((7, 7), np.uint8)
     organ_candidate = cv2.morphologyEx(organ_candidate, cv2.MORPH_CLOSE, kernel_large)

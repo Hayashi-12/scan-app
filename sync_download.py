@@ -194,7 +194,7 @@ class SyncManager:
             print(f"  　analyze_burn.py を同じフォルダに置くと自動解析されます。")
             return
 
-        print(f"  🔍 解析中: {name}...")
+        print(f"  [解析] {name}...")
 
         # 環境変数でパスを渡す
         env = os.environ.copy()
@@ -234,7 +234,7 @@ class SyncManager:
         """ポーリングで新しい画像を監視し続ける"""
         print()
         print("=" * 56)
-        print("  📡 Supabase 画像同期 — 監視開始")
+        print("  Supabase 画像同期 -- 監視開始")
         print("=" * 56)
         print(f"  ダウンロード先   : {self.download_dir.resolve()}")
         print(f"  解析結果         : {self.output_dir.resolve()}")
@@ -244,7 +244,7 @@ class SyncManager:
         if self.analyze_script.exists():
             print(f"  解析スクリプト   : {self.analyze_script}")
         else:
-            print(f"  ⚠ analyze_burn.py が見つかりません（画像保存のみ）")
+            print(f"  [!] analyze_burn.py が見つかりません（画像保存のみ）")
 
         print()
         print("  iPhoneから撮影すると自動でここに届きます。")

@@ -41,15 +41,15 @@ class ValidationReport:
         print("  撮影条件チェック結果")
         print("=" * 50)
         for c in self.checks:
-            mark = "✓" if c.ok else "✗"
+            mark = "[OK]" if c.ok else "[NG]"
             val_str = f"  (計測値: {c.value:.1f})" if not np.isnan(c.value) else ""
             target_str = f"  [基準: {c.target}]" if c.target else ""
             print(f"  {mark} {c.name}: {c.message}{val_str}{target_str}")
         print("-" * 50)
         if self.passed:
-            print("  → 撮影条件OK。解析を開始します。")
+            print("  -> 撮影条件OK。解析を開始します。")
         else:
-            print("  → 撮影条件NG。修正してから再撮影してください。")
+            print("  -> 撮影条件NG。修正してから再撮影してください。")
         print("=" * 50 + "\n")
 
 

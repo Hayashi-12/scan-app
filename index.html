@@ -409,18 +409,35 @@ function updateUI(checks) {
 //  ガイド枠の領域を計算してクロップ
 // ============================================================
 function getCropRect(videoW, videoH) {
-  // ガイド枠: width:72%, aspect-ratio:1, 中心が上寄り(52%)
-  const ovalW  = videoW * 0.72;
-  const ovalH  = ovalW;
-  const centerX = videoW / 2;
-  const centerY = videoH * 0.48;
-  // マージン: 枠の10%
-  const margin = ovalW * 0.10;
-  const x = Math.max(0, Math.round(centerX - ovalW / 2 - margin));
-  const y = Math.max(0, Math.round(centerY - ovalH / 2 - margin));
-  const w = Math.min(videoW - x, Math.round(ovalW + margin * 2));
-  const h = Math.min(videoH - y, Math.round(ovalH + margin * 2));
-  return { x, y, w, h };
+  // iPhoneの縦持ち撮影では短辺が横、長辺が縦
+  // ガイド枠はviewfinderの短辺を基準に width:72%
+  const shortSide = Math.min(videoW, videoH);
+  const longSide  = Math.max(videoW, videoH);
+
+  // ビデオが横長(landscape)か縦長(portrait)かで軸を合わせる
+  const isPortrait = videoH > videoW;
+  const frameW = isPortrait ? videoW : videoH; // 画面の短辺方向
+  const frameH = isPortrait ? videoH : videoW; // 画面の長辺方向
+
+  // ガイド枠: 短辺の72%の正方形、中心は長辺の48%
+  const ovalSize = frameW * 0.72;
+  const margin   = ovalSize * 0.12; // 12%マージン
+
+  const cx = frameW / 2;
+  const cy = frameH * 0.48;
+
+  const x = Math.max(0, Math.round(cx - ovalSize / 2 - margin));
+  const y = Math.max(0, Math.round(cy - ovalSize / 2 - margin));
+  const w = Math.min(frameW - x, Math.round(ovalSize + margin * 2));
+  const h = Math.min(frameH - y, Math.round(ovalSize + margin * 2));
+
+  // 実際のvideoピクセル座標に変換
+  if (isPortrait) {
+    return { x, y, w, h };
+  } else {
+    // landscapeの場合は軸が入れ替わっている
+    return { x: y, y: x, w: h, h: w };
+  }
 }
 
 // ============================================================
